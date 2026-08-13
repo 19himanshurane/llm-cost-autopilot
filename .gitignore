@@ -1,10 +1,11 @@
-.env
+﻿.env
 __pycache__/
 *.pyc
 .venv/
 venv/
 data/*.json
 data/*.csv
+data/*.jsonl
 !data/.gitkeep
 .DS_Store
 *.db

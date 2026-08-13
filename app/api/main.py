@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 5: FastAPI service.
 
 Step 1: POST /v1/completions -- the main endpoint end users call.
@@ -10,14 +10,25 @@ Run from the project root:
     uvicorn app.api.main:app --reload
 
 Then visit http://127.0.0.1:8000/docs for interactive API documentation.
+
+NOTE: this file deliberately does NOT use `from __future__ import annotations`
+(unlike the rest of the codebase). slowapi's rate-limit decorator wraps
+route functions in a way that breaks Pydantic's forward-reference
+resolution when annotations are stringified -- this project targets
+Python 3.12+, where `X | None` union syntax already works natively at
+runtime, so the future-import isn't needed here anyway.
 """
 
-from __future__ import annotations
+import logging
 
 import pandas as pd
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.db.logger import get_connection
 from app.eval.async_pipeline import route_with_async_verification
@@ -25,11 +36,50 @@ from app.models import MODEL_REGISTRY
 from app.routing.router import DEFAULT_CONFIG_PATH, load_default_router
 from app.routing.tiers import TIER_DEFINITIONS
 
+logger = logging.getLogger("llm_cost_autopilot")
+
 app = FastAPI(
     title="LLM Cost Autopilot",
     description="Routes each request to the cheapest model that can handle it.",
     version="0.1.0",
 )
+
+# Public demo instance backed by a real (free-tier) Groq API key -- without
+# a limit, anyone hammering this endpoint could burn through that quota and
+# take the whole live demo down. 10 requests/minute per IP is generous for
+# a human trying the "Try it live" tab, restrictive for a script.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catches anything that isn't already an HTTPException (a provider
+    timeout, a network blip, whatever) and returns one clean JSON error
+    instead of leaking an internal Python traceback to the caller. The
+    real traceback still goes to the server logs for debugging."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong processing that request. Please try again."},
+    )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """No real content lives at the bare domain -- send visitors straight
+    to the interactive docs instead of a bare 404."""
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/health")
+def health() -> dict:
+    """Simple liveness check -- returns fast, touches no external
+    services, useful for uptime monitors or just confirming the server is
+    up before debugging anything more specific."""
+    return {"status": "ok"}
+
 
 # Loaded ONCE when the server starts, reused for every request.
 router = load_default_router()
@@ -58,10 +108,11 @@ class CompletionResponse(BaseModel):
 
 
 @app.post("/v1/completions", response_model=CompletionResponse)
-def create_completion(request: CompletionRequest) -> CompletionResponse:
+@limiter.limit("10/minute")
+def create_completion(request: Request, body: CompletionRequest = Body(...)) -> CompletionResponse:
     """The one endpoint end users actually call. They send a prompt, we
     decide the model, they get back the answer plus an explanation."""
-    tier, response = route_with_async_verification(request.prompt, router)
+    tier, response = route_with_async_verification(body.prompt, router)
     tier_def = TIER_DEFINITIONS[tier]
 
     reason = (
