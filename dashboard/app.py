@@ -34,11 +34,27 @@ st.set_page_config(page_title="LLM Cost Autopilot", layout="wide")
 
 @st.cache_data(ttl=10)
 def load_data() -> pd.DataFrame:
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM requests", conn)
-    conn.close()
+    resp = httpx.get(f"{API_BASE_URL}/v1/requests", timeout=30.0)
+    resp.raise_for_status()
+    df = pd.DataFrame(resp.json())
+    if df.empty:
+        return df
     df["date"] = pd.to_datetime(df["timestamp"], unit="s").dt.date
     return df
+
+
+def load_data_safe() -> pd.DataFrame | None:
+    """Wraps load_data() so a slow/cold/misconfigured API shows a clear
+    message instead of an unhandled traceback filling the page."""
+    try:
+        return load_data()
+    except Exception as exc:
+        st.error(
+            f"Couldn't reach the API at {API_BASE_URL} to load dashboard data ({exc}). "
+            "If it's been idle a while, Render's free tier can take up to a minute to "
+            "wake up -- try refreshing in a moment."
+        )
+        return None
 
 
 st.title("LLM Cost Autopilot - Cost Dashboard")
@@ -46,7 +62,10 @@ st.title("LLM Cost Autopilot - Cost Dashboard")
 tab_dashboard, tab_try_it = st.tabs(["Cost Dashboard", "Try it live"])
 
 with tab_dashboard:
-    df = load_data()
+    df = load_data_safe()
+
+    if df is None:
+        st.stop()
 
     if df.empty:
         st.warning("No requests logged yet. Run `python -m scripts.populate_demo_data` first.")
@@ -105,10 +124,17 @@ with tab_dashboard:
             f"{escalation_rate:.1%}",
             f"{int(df['was_escalated'].sum())} of {len(df)}",
         )
+        st.caption(
+            "Not meaningful yet: escalation compares the cheap model's answer "
+            "against the Tier 3 reference model, which is currently mocked "
+            "(no paid OpenAI key configured). A real answer will rarely "
+            "text-match a canned mock string, so this rate reads high by "
+            "construction, not because the cheap models are performing badly."
+        )
 
     st.divider()
     st.caption(
-        "NOTE: figures include a mix of real and mock responses. Tier 1 and Tier 2 requests logged since a Groq API key was configured are real (see was_mocked in the database); Tier 3 (GPT-4o) remains mocked, since no paid key is configured for it."
+        "NOTE: figures include a mix of real and mock responses. Tier 1 and Tier 2 requests logged since a Groq API key was configured are real (see was_mocked in the database); Tier 3 (GPT-4o) remains mocked, since no paid key is configured for it. Because verification compares against that mocked Tier 3 response, the escalation rate above is not a reliable quality signal in this configuration."
     )
 
 with tab_try_it:

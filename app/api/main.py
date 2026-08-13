@@ -14,15 +14,12 @@ Then visit http://127.0.0.1:8000/docs for interactive API documentation.
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
-
 import pandas as pd
 import yaml
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app.db.logger import DB_PATH
+from app.db.logger import get_connection
 from app.eval.async_pipeline import route_with_async_verification
 from app.models import MODEL_REGISTRY
 from app.routing.router import DEFAULT_CONFIG_PATH, load_default_router
@@ -133,13 +130,7 @@ def get_stats() -> StatsResponse:
     """The same numbers the Streamlit dashboard shows, as JSON -- so
     another program (a CI check, a Slack bot, a status page) could pull
     them without scraping a dashboard meant for humans."""
-    if not Path(DB_PATH).exists():
-        return StatsResponse(
-            total_requests=0, total_cost_usd=0, baseline_cost_usd=0,
-            savings_usd=0, savings_pct=0, escalation_rate=0, routing_distribution={},
-        )
-
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM requests", conn)
     conn.close()
 
@@ -162,6 +153,18 @@ def get_stats() -> StatsResponse:
         escalation_rate=round(float(df["was_escalated"].mean()), 4),
         routing_distribution=df["model_name"].value_counts().to_dict(),
     )
+
+
+@app.get("/v1/requests")
+def list_requests() -> list[dict]:
+    """Every logged request row as JSON -- lets the deployed dashboard
+    (which runs on a different machine than this API) rebuild its charts
+    from live data instead of reading a local SQLite file that would
+    always be empty on that machine."""
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM requests", conn)
+    conn.close()
+    return df.to_dict(orient="records")
 
 
 class RoutingConfigUpdate(BaseModel):
