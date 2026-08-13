@@ -1,6 +1,6 @@
 ﻿# LLM Cost Autopilot
 
-<p align="center"><b>Route every LLM request to the cheapest model that can actually handle it - automatically, with built-in self-verification.</b></p>
+<p align="center"><img src="docs/banner.svg" alt="LLM Cost Autopilot" width="100%"></p>
 
 <p align="center">
   <a href="https://github.com/19himanshurane/llm-cost-autopilot/actions/workflows/tests.yml"><img alt="CI" src="https://github.com/19himanshurane/llm-cost-autopilot/actions/workflows/tests.yml/badge.svg"></a>
@@ -78,36 +78,25 @@ docker compose up --build
 ```
 
 ## How it works
-             +--------------+
 
-request ---> | FastAPI |
-| /v1/completions
-+------+-------+
-|
-+------v-------+
-| Complexity | scikit-learn classifier
-| Classifier | (Tier 1 / 2 / 3)
-+------+-------+
-|
-+------v-------+ routing_config.yaml
-| Router |<----- (tier -> model map)
-+------+-------+
-|
-+---------------+---------------+
-v v v
-OpenAI adapter Anthropic adapter Groq adapter
-| | |
-+---------------+---------------+
-|
-+------v-------+
-| SQLite log |--> Streamlit cost dashboard
-+------+-------+
-| (async, after response returned)
-+------v-------+
-| Verifier | compares vs. reference model
-| + escalator | re-runs & logs on divergence
-+--------------+
-
+```mermaid
+flowchart TD
+    A[Incoming request] --> B[FastAPI: /v1/completions]
+    B --> C[Complexity Classifier<br/>scikit-learn]
+    C -->|Tier 1 / 2 / 3| D[Router]
+    E[routing_config.yaml] -.read by.-> D
+    D --> F{Which provider?}
+    F -->|Tier 1 or 2| G[Groq adapter]
+    F -->|Tier 3| H[OpenAI adapter]
+    G --> I[Response returned to caller]
+    H --> I
+    I --> J[(SQLite request log)]
+    J --> K[Streamlit cost dashboard]
+    I -.async, background thread.-> L[Verifier]
+    L -->|compares vs. reference model| M{Diverged too much?}
+    M -->|yes| N[Escalate, log, feed back into training set]
+    M -->|no| O[No action]
+```
 
 Every provider adapter falls back to a mock response when no key is configured, which is how this system was built and validated end to end before spending anything. Today, **Tier 1** and **Tier 2** run on real, free inference via **Groq** - verified end to end with real responses, real (near-zero) cost, and real latency. **Tier 3**, routed to GPT-4o, stays mocked, since no free tier exists for OpenAI frontier models.
 

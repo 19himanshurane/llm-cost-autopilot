@@ -1,0 +1,12 @@
+﻿<svg width="960" height="220" viewBox="0 0 960 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="220" rx="16" fill="url(#bg)" stroke="#334155" stroke-width="1"/>
+  <text x="480" y="100" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="42" font-weight="700" fill="#f8fafc">LLM Cost Autopilot</text>
+  <text x="480" y="140" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="18" fill="#94a3b8">Route every request to the cheapest model that can handle it - automatically</text>
+  <text x="480" y="175" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#34d399">$0/month infra - verified with real, free LLM inference</text>
+</svg>

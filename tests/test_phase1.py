@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -8,7 +8,7 @@ from app.models import MODEL_REGISTRY, get_model
 
 
 def test_registry_has_five_models():
-    assert len(MODEL_REGISTRY) == 5
+    assert len(MODEL_REGISTRY) == 6
 
 
 def test_get_model_unknown_raises():
@@ -33,3 +33,4 @@ def test_send_request_falls_back_to_mock_without_keys(monkeypatch):
     assert response.model_name == "gpt-4o-mini"
     assert response.cost_usd >= 0
     assert response.input_tokens > 0
+
