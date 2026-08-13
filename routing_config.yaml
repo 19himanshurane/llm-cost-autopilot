@@ -1,0 +1,4 @@
+﻿routing:
+  tier_1_simple: llama3-8b-groq
+  tier_2_moderate: llama3-groq
+  tier_3_complex: gpt-4o

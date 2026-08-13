@@ -1,0 +1,21 @@
+# Phase 5, Step 3: docker-compose.
+#
+# One "api" service running the FastAPI app. Verification runs as a
+# background thread INSIDE this same service (see Phase 3's async_pipeline.py)
+# rather than as a separate worker container -- our design doesn't use a
+# task queue, so a second "worker" container would have nothing real to do.
+#
+# Run with:
+#   docker compose up --build
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mounts the host's ./data folder into the container, so the SQLite
+      # database, trained classifier, and logs all persist across
+      # container restarts instead of vanishing when the container stops.
+      - ./data:/app/data
+    env_file:
+      - .env
